@@ -1,0 +1,174 @@
+#! it has default period=1
+ipblock arm_processor{
+  iptype "armsystem";
+  ipparm "exec=mycordic";
+  ipparm "period=1";
+}
+
+ipblock iteration_input(out data: tc(32)){
+  iptype "armsystemsource";
+  ipparm "core=arm_processor";
+  ipparm "address=0x80000000";
+}
+ipblock shift_pointer_input(out data :tc(32)){
+  iptype "armsystemsource";
+  ipparm "core=arm_processor";
+  ipparm "address=0x80000004";
+}
+ipblock quad_pointer_input(out data :tc(32)){
+  iptype "armsystemsource";
+  ipparm "core=arm_processor";
+  ipparm "address=0x80000008";
+}
+ipblock x1_input(out data :tc(32)){
+  iptype "armsystemsource";
+  ipparm "core=arm_processor";
+  ipparm "address=0x8000000C";
+}
+ipblock theta_input(out data :tc(32)){
+  iptype "armsystemsource";
+  ipparm "core=arm_processor";
+  ipparm "address=0x80000010";
+}
+ipblock start_input(out data :tc(32)){
+  iptype "armsystemsource";
+  ipparm "core=arm_processor";
+  ipparm "address=0x80000014";
+}
+
+
+ipblock output_sin(in data :tc(16)){
+  iptype "armsystemsink";
+  ipparm "core=arm_processor";
+  ipparm "address=0x80000018";
+}
+ipblock output_cos(in data :tc(32)){
+  iptype "armsystemsink";
+  ipparm "core=arm_processor";
+  ipparm "address=0x8000001C";
+}
+ipblock output_done(in data :tc(32)){
+  iptype "armsystemsink";
+  ipparm "core=arm_processor";
+  ipparm "address=0x80000020";
+}
+
+dp cordic(in iteration,shift,quad,x1,theta,start : tc(32);
+          out sin,cos,done : tc(32)){
+  lookup atantable : tc(32) = {
+    0x4000,
+    0x25C8,
+    0x13F6,
+    0x0A22,
+    0x0516,
+    0x028B,
+    0x0145,
+    0x00A2,
+    0x0051,
+    0x0029,
+    0x0014,
+    0x000A,
+    0x0005,
+    0x0003,
+    0x0002,
+    0x0001
+    };
+  reg startREG,iterationREG,thetaREG,sREG,sinREG,cosREG,x1REG,yREG,iREG,shiftREG : tc(32);
+  
+  sfg always{
+    startREG = start;
+    shiftREG = shift;
+    $display("iteration: ", iteration, " x1: ",x1REG, " theta: ",thetaREG, " start: ", start, " quad: ", quad, " shift: ", shift, " yREG: ", yREG, " sREG: ", sREG, " iREG: ", iREG);
+  }
+
+  sfg init {
+    iterationREG = iteration;
+    x1REG = x1;
+    thetaREG = theta;
+  }
+
+  #! if else clause
+  sfg update_x1{
+    x1REG = (thetaREG < sREG) ? (x1REG + (yREG >> iREG)) : (x1REG - (yREG >> iREG));
+  }
+  sfg update_y{
+    yREG = (thetaREG < sREG) ? (yREG - (x1REG >> iREG)) : (yREG + (x1REG >> iREG));
+  }
+  sfg update_s{
+    sREG = (thetaREG < sREG) ? (sREG - atantable(iREG)) : (sREG + atantable(iREG));
+  }
+  sfg inc_i{
+    iREG = iREG + 1;
+  }
+
+  #! first if after the loop
+  sfg abs_x1{
+    x1REG = x1REG < 0 ? (-x1REG) : (x1REG);
+  }
+
+  #! second if after loop
+  sfg shift_zero{
+    sinREG = yREG * quad;
+    cosREG = x1REG * quad;
+  }
+  sfg shift_neg{
+    sinREG = (-x1REG) * quad;
+    cosREG = yREG * quad;
+  }
+  sfg shift_pos{
+    sinREG = x1REG  * quad;
+    cosREG = (-yREG) * quad;
+  }
+
+
+  sfg finish{
+    done = 1;
+    sin = sinREG;
+    cos = cosREG;
+  }
+
+  sfg idle{
+    sin = 0;
+    cos = 0;
+    done = 0;
+  }
+}
+
+fsm fsm_system(cordic) {
+  initial s0;
+  state s1,s2,s3;
+
+  @s0 if(startREG) then (init,idle) -> s1;
+        else (init,idle) -> s0;
+  
+  
+  @s1 if (iREG < iterationREG) then (update_x1,update_y,update_s,inc_i,idle) -> s1;
+        else (abs_x1,idle) -> s2;
+  
+  @s2 if (shiftREG > 0) then (shift_pos,idle) -> s3;
+      else if (shiftREG < 0) then(shift_neg,idle) -> s3;
+        else (shift_zero,idle) -> s3;
+
+  @s3 (finish) -> s3;
+}
+
+dp cordic_system {
+  sig iteration,shift,quad,x1,theta,start: tc(32);
+  sig sin,cos,done: tc(32);
+
+  use cordic(iteration,shift,quad,x1,theta,start,sin,cos,done);
+  use arm_processor;
+  use iteration_input(iteration);
+  use shift_pointer_input(shift);
+  use quad_pointer_input(quad);
+  use x1_input(x1);
+  use theta_input(theta);
+  use start_input(start);
+
+  use output_sin(sin);
+  use output_cos(cos);
+  use output_done(done);
+}
+system S {
+  cordic_system;
+}
