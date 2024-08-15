@@ -1,0 +1,5 @@
+# co-design cordic algorithm
+&emsp; Here we implements cordic algorithm, using c and GEZEL hardware language (which we generate vhdl code for it). the **cordic** algorithm implementation is in GEZEL, which is a hardware hanguage, and then the GEZEL code is going to be used for generating
+VHDL code. So in fact, the implementation of cordic algorithm itself is in VHDL and in c code we just prepare the inputs and outputs of the algorithm. Also we need to mention that these two different language are going to integrate with each other using 
+**memory-map**. <br/>First due to  cordic algorithm we set specify relevant inputs and outputs in c code. Then we set values for input and set start bit to one. Then we busy wait for the vhdl code (hardware code) to run the algorithm and prepare the result for 
+us and set the done bit to 1. Then the c code reads the results from the memory. Lets mention it again that the approach we are using for integration of these two language, c and GEZEL(which was turned into VHDL), is **memory-map**.
